@@ -1,26 +1,34 @@
 import os
-try:
-    import requests
-    import telebot
-    import json
-    import time
-    import psutil
-    from telebot import types
-except ImportError:
-    os.system("pip install requests telebot psutil")
-
 import requests
 import telebot
 import json
-import os
 import time
 import psutil
 from telebot import types
+from flask import Flask, request
 
-token = "7250959737:AAEoq5PaAlZU5e83utVh6QUEX75NTgiYpIQ"
+token = os.getenv('7250959737:AAEoq5PaAlZU5e83utVh6QUEX75NTgiYpIQ')
 bot = telebot.TeleBot(token)
+app = Flask(__name__)
 
 start_photo_path = 'start_photo.jpg'
+
+@app.route('/' + token, methods=['POST'])
+def getMessage():
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "!", 200
+
+@app.route("/")
+def webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url='https://YOUR_APP_NAME.onrender.com/' + token)
+    return "!", 200
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host="0.0.0.0", port=port)
+
+bot.infinity_polling()
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -166,45 +174,27 @@ def YouTube(message):
 
     data = {
         'k_query': link,
-        'k_page': 'Youtube Downloader',
+        'k_page': 'youtube',
         'hl': 'en',
-        'q_auto': '0',
+        'q_auto': '1',
     }
 
-    response = requests.post('https://www.y2mate.com/mates/en858/analyzeV2/ajax', headers=headers, data=data).json()
-
-    if response['status'] == 'ok':
-        cut = response["vid"]
-        video_links = response.get('links', {}).get('mp4', {})
+    res = requests.post('https://www.y2mate.com/mates/analyzeV2/ajax', headers=headers, data=data)
+    if "ok" in res.text:
+        cut = res.json()['result']['id']
         markup = types.InlineKeyboardMarkup()
-        for video_id, video_info in video_links.items():
-            size = video_info.get('size', '')
-            quality = video_info.get('q', '')
-            k = video_info.get('k', '')
 
-            he = {
-                'authority': 'www.y2mate.com',
-                'accept': '*/*',
-                'accept-language': 'ar-YE,ar;q=0.9,en-YE;q=0.8,en-US;q=0.7,en;q=0.6',
-                'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'origin': 'https://www.y2mate.com',
-                'referer': 'https://www.y2mate.com/download-youtube/',
-                'sec-ch-ua': '"Not)A;Brand";v="24", "Chromium";v="116"',
-                'sec-ch-ua-mobile': '?1',
-                'sec-ch-ua-platform': '"Android"',
-                'sec-fetch-dest': 'empty',
-                'sec-fetch-mode': 'cors',
-                'sec-fetch-site': 'same-origin',
-                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36',
-                'x-requested-with': 'XMLHttpRequest',
-            }
+        qualities = res.json().get('result', {}).get('links', {}).get('mp4', {}).keys()
+        for quality in qualities:
+            k = res.json().get('result', {}).get('links', {}).get('mp4', {}).get(quality, {}).get('k')
+            size = res.json().get('result', {}).get('links', {}).get('mp4', {}).get(quality, {}).get('size')
 
             da = {
                 'vid': cut,
                 'k': k,
             }
 
-            response = requests.post('https://www.y2mate.com/mates/convertV2/index', headers=he, data=da).json()
+            response = requests.post('https://www.y2mate.com/mates/convertV2/index', headers=headers, data=da).json()
             video_url = response.get('dlink', '')
 
             if video_url:
@@ -257,4 +247,5 @@ def callback_query(call):
     else:
         bot.answer_callback_query(call.id, "Error: URL not found.")
 
+# Infinite polling for Telegram bot to handle incoming messages
 bot.infinity_polling()
